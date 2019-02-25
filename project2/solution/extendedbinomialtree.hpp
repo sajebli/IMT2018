@@ -55,7 +55,7 @@ namespace QuantLib {
             driftStepByCache.setf(ext::bind(&ExtendedBinomialTree::driftStep, this, _1));
             for (Size i = 0; i <= steps; i ++) {
                 Time stepTime = i*this->dt_;
-                driftPerStepCache.push_back(this->driftStep(stepTime));
+                driftStepCache.push_back(this->driftStepByCache(stepTime));
             }
 
         }
@@ -71,7 +71,7 @@ namespace QuantLib {
             return this->treeProcess_->drift(driftTime, x0_) * dt_;
         }
         Cache<Time, Real> driftStepByCache;
-        std::vector<Real> driftPerStepCache ;
+        std::vector<Real> driftStepCache;
         Real x0_, driftPerStep_;
         Time dt_;
 
@@ -94,16 +94,15 @@ namespace QuantLib {
         virtual ~ExtendedEqualProbabilitiesBinomialTree() {}
 
         Real underlying(Size i, Size index) const {
-            Time stepTime = i*this->dt_;
             BigInteger j = 2*BigInteger(index) - BigInteger(i);
-            return this->x0_*std::exp(i*this->driftPerStepCache[i] + j*this->upStepByCache(stepTime));
+            return this->x0_*std::exp(i*this->driftStepCache[i] + j*this->upStepCache[i]);
         }
 
         Real probability(Size, Size, Size) const { return 0.5; }
       protected:
         //the tree dependent up move term at time stepTime
         virtual Real upStep(Time stepTime) const = 0;
-        Cache<Time, Real> upStepByCache;
+        std::vector<Real> upStepCache;
         Real up_;
     };
 
@@ -117,35 +116,28 @@ namespace QuantLib {
                         const ext::shared_ptr<StochasticProcess1D>& process,
                         Time end,
                         Size steps)
-        : ExtendedBinomialTree<T>(process, end, steps) {
-          probUpByCache.setf(ext::bind(&ExtendedEqualJumpsBinomialTree::probUp, this, _1));
-        }
+        : ExtendedBinomialTree<T>(process, end, steps) {}
         virtual ~ExtendedEqualJumpsBinomialTree() {}
         Real underlying(Size i, Size index) const {
-            Time stepTime = i*this->dt_;
+            // Time stepTime = i*this->dt_;
             BigInteger j = 2*BigInteger(index) - BigInteger(i);
             // exploiting equal jump and the x0_ tree centering
-            return this->x0_*std::exp(j*this->dxStepByCache(stepTime));
+            return this->x0_*std::exp(j*this->dxStepCache[i]);
 
         }
 
         Real probability(Size i, Size, Size branch) const {
-            Time stepTime = i*this->dt_;
-            Real upProb = this->probUpByCache(stepTime);
+            Real upProb = this->probUpCache[i];
             Real downProb = 1 - upProb;
             return (branch == 1 ? upProb : downProb);
         }
       protected:
         //probability of a up move
-        // virtual Real probUp(Time stepTime) const = 0;
-        Real probUp(Time stepTime) const {
-          return 0.5 + 0.5*this->driftStepByCache(stepTime) / this->dxStepByCache(stepTime);
-        }
+        virtual Real probUp(Time stepTime) const = 0;
         //time dependent term dx_
         virtual Real dxStep(Time stepTime) const = 0;
-        Cache<Time, Real> probUpByCache;
-        Cache<Time, Real> dxStepByCache;
-
+        std::vector<Real> probUpCache;
+        std::vector<Real> dxStepCache;
         Real dx_, pu_, pd_;
     };
 
@@ -174,6 +166,7 @@ namespace QuantLib {
                                   Size steps,
                                   Real strike);
       protected:
+          Real probUp(Time stepTime) const;
           Real dxStep(Time stepTime) const;
     };
 
@@ -205,6 +198,7 @@ namespace QuantLib {
                            Size steps,
                            Real strike);
     protected:
+        Real probUp(Time stepTime) const;
         Real dxStep(Time stepTime) const;
     };
 
